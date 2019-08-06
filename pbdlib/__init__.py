@@ -7,7 +7,6 @@ from .hsmm import HSMM
 from .model import Model
 from .mvn import *
 from .plot import *
-from .pylqr import *
 from .poglqr import PoGLQR, LQR, GMMLQR
 from .mtmm import MTMM, VBayesianGMM, VMBayesianGMM, VBayesianHMM
 

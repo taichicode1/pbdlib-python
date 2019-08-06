@@ -114,6 +114,28 @@ class GMM(Model):
 
 		return gmm
 
+	def __mod__(self, other):
+		"""
+		Renormalized product of Gaussians, component by component
+
+		:param other:
+		:return:
+		"""
+
+		gmm = GMM(nb_dim=self.nb_dim, nb_states=self.nb_states * other.nb_states)
+		# gmm.priors = self.priors
+		gmm.mu = np.einsum('aij,aj->ai', self.lmbda, self.mu)[:, None] + \
+				 np.einsum('aij,aj->ai', other.lmbda, other.mu)[None]
+
+		gmm.lmbda = self.lmbda[:, None] + other.lmbda[None]
+
+		gmm.sigma = np.linalg.inv(gmm.lmbda)
+
+		gmm.mu = np.einsum('abij,abj->abi', gmm.sigma, gmm.mu)
+
+
+		return gmm
+
 	def marginal_model(self, dims):
 		"""
 		Get a GMM of a slice of this GMM
