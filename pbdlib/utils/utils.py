@@ -6,7 +6,9 @@ import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.special import factorial
-
+from dtw import dtw
+from .. import plot as pblt
+from ... import pbdlib as pbd
 plt.style.use('ggplot')
 
 import scipy.sparse as ss
@@ -218,7 +220,7 @@ def align_trajectories(data, additional_data=[], hsmm=True, nb_states=5):
 	:param data: 		[list of np.array([nb_timestep, M, N, ...])]
 	:return:
 	"""
-	from dtw import dtw
+
 	if hsmm:
 		time = align_trajectories_hsmm(data, nb_states)
 
@@ -252,7 +254,9 @@ def angle_to_rotation(theta):
 
 def feature_to_slice(nb_dim=2, nb_frames=None, nb_attractor=2,
 					 features=None):
-	# type: (int, list of int, int, list of list of string) -> object
+
+	## type: (int, list of int, int, list of list of string) -> object
+
 	index = []
 	l = 0
 	for i, nb_frame, feature in zip(range(nb_attractor), nb_frames, features):
@@ -383,7 +387,7 @@ def plot_demos_3d(demos, figsize=(15, 5), angle=[60, 45]):
 # ax[nb].plot(demos[i]['Data'][7,:], demos[i]['Data'][8,:],'H',color=c,ms=10,alpha=a)
 
 
-def repro_plot(model, demos, save=False, tp_list=[], figsize=(3.5, 5)):
+def repro_plot(model, demos, skill_name='temp', save=False, tp_list=[], figsize=(3.5, 5)):
 	nb_states = model.nb_states
 	nb_tp = len(tp_list)
 	idx = np.floor(np.linspace(1, 255, model.nb_states)).astype(int)
@@ -604,7 +608,7 @@ def train_test(demos, demo_idx=0, nb_states=5, test=True, sensory=True, kbins=Tr
 
 			best['model'] = deepcopy(model)
 
-	print 'Best :', best['score']
+	print('Best :', best['score'])
 	model = best['model']
 
 	model.compute_duration(demos_train)

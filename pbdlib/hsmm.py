@@ -1,6 +1,6 @@
 import numpy as np
 
-from hmm import *
+from .hmm import *
 from .functions import *
 from .model import *
 
@@ -395,7 +395,7 @@ class HSMM(HMM):
 				self.Trans_Fw = self.Trans_Pd
 				# print self.Trans_Fw
 			except:
-				print "No task-parametrized transition matrix : normal transition matrix will be used"
+				print("No task-parametrized transition matrix : normal transition matrix will be used")
 				self.Trans_Fw = self.Trans_Pd
 				# print self.Trans_Fw
 		else:  # compute the transition matrix for current parameters
@@ -513,7 +513,7 @@ class HSMM(HMM):
 			self.Pd[i, :] = self.Pd[i, :] / np.sum(self.Pd[i, :])
 
 		if np.isnan(self.Pd).any():
-			print "Problem of duration probabilities"
+			print("Problem of duration probabilities")
 			return
 
 		h = np.zeros((self.nb_states, n_step))

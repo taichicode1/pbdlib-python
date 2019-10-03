@@ -19,7 +19,7 @@ class Interactive(object):
 
 	def key_event(self, event):
 		c = event.key
-		print c
+		print(c)
 		if c in ['\x1b', '\x03']:
 			done = True
 		elif c in self.bindings:
@@ -51,7 +51,7 @@ class Interactive(object):
 
 	@staticmethod
 	def pretty_print(text):
-		print colored("#" * 60, 'green'), "\n",  colored(text, 'green'),"\n", colored("#" * 60, 'green')
+		print(colored("#" * 60, 'green'), "\n",  colored(text, 'green'),"\n", colored("#" * 60, 'green'))
 
 	def move_event(self, event):
 		pass

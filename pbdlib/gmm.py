@@ -1,10 +1,10 @@
 import numpy as np
-from model import *
-from functions import multi_variate_normal
+from .model import *
+from .functions import multi_variate_normal
 from scipy.linalg import block_diag
 
 from termcolor import colored
-from mvn import MVN
+from .mvn import MVN
 
 
 class GMM(Model):
@@ -364,10 +364,10 @@ class GMM(Model):
 							'acj,aic->aij', np.einsum('aic,ac->aci', dx, GAMMA2), dx) + reg_finish
 
 					if verbose:
-						print colored('Converged after %d iterations: %.3e' % (it, LL[it]), 'red', 'on_white')
+						print(colored('Converged after %d iterations: %.3e' % (it, LL[it]), 'red', 'on_white'))
 					return GAMMA
 		if verbose:
-			print "GMM did not converge before reaching max iteration. Consider augmenting the number of max iterations."
+			print("GMM did not converge before reaching max iteration. Consider augmenting the number of max iterations.")
 		return GAMMA
 
 

@@ -1,9 +1,9 @@
 from termcolor import colored
 import numpy as np
 
-from pbdlib.functions import *
-from pbdlib.model import *
-from pbdlib.gmm import *
+from .functions import *
+from .model import *
+from .gmm import *
 
 import math
 from numpy.linalg import inv, pinv, norm, det
@@ -20,7 +20,7 @@ class HMM(GMM):
 	@property
 	def init_priors(self):
 		if self._init_priors is None:
-			print colored("HMM init priors not defined, initializing to uniform", 'red', 'on_white')
+			print(colored("HMM init priors not defined, initializing to uniform", 'red', 'on_white'))
 			self._init_priors = np.ones(self.nb_states) / self.nb_states
 
 		return self._init_priors
@@ -32,7 +32,7 @@ class HMM(GMM):
 	@property
 	def trans(self):
 		if self._trans is None:
-			print colored("HMM transition matrix not defined, initializing to uniform", 'red', 'on_white')
+			print(colored("HMM transition matrix not defined, initializing to uniform", 'red', 'on_white'))
 			self._trans = np.ones((self.nb_states, self.nb_states)) / self.nb_states
 		return self._trans
 
@@ -425,7 +425,7 @@ class HMM(GMM):
 
 			# Check for convergence
 			if it > nb_min_steps and LL[it] - LL[it - 1] < max_diff_ll:
-				print "EM converges"
+				print("EM converges")
 				if end_cov:
 					for i in range(self.nb_states):
 						# recompute covariances without regularization
@@ -450,7 +450,7 @@ class HMM(GMM):
 				return True
 
 
-		print "EM did not converge"
+		print("EM did not converge")
 		return False
 
 	def score(self, demos):

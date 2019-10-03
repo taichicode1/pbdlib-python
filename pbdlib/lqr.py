@@ -143,7 +143,7 @@ class LQR(pbdc.LQR):
 			# print Sc.real
 			return Sc.real
 		except:
-			print "Singular matrix"
+			print("Singular matrix")
 
 
 	def setProblem(self, r, q, target):

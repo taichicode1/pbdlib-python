@@ -1,20 +1,18 @@
-#!/usr/bin/env python2.7
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from pbdlib.gui import Interactive
+from .interactive import Interactive
 from termcolor import colored
-
-try:
+import sys
+if sys.version_info[0] == 3:
 	import tkinter as tk
-except ImportError:
+	from tkinter.filedialog import asksaveasfilename
+else:
 	import Tkinter as tk
-except:
-	raise
+	from tkFileDialog import asksaveasfilename
 
-from tkFileDialog import asksaveasfilename
 from matplotlib import gridspec
-import pbdlib as pbd
+from ... import pbdlib as pbd
 
 class Robot(object):
 	def __init__(self, T):
@@ -80,13 +78,13 @@ class InteractiveDemos(Interactive, Robot):
 		try:
 			self.demos = np.load(self.path + filename + '.npy')[()]
 			self.nb_demos = self.demos['x'].__len__(); self.params['current_demo'][2] = self.nb_demos - 1
-			print colored('Existing skill, demos loaded', 'green')
+			print(colored('Existing skill, demos loaded', 'green'))
 			self.replot_demos()
 			self.fig.canvas.draw()
 			self.loaded = True
 		except:
 			self.demos = {'x': [], 'dx': []}
-			print colored('Not existing skill', 'red')
+			print(colored('Not existing skill', 'red'))
 
 	def highlight_demos(self):
 		data = self.demos['x'][self.params['current_demo'][0]]

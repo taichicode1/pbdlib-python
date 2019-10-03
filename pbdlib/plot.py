@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import scipy as sp
 
 from scipy.stats import multivariate_normal
-
+from .. import pbdlib as pbd
 from .functions import *
 from matplotlib.path import Path
 import matplotlib.patches as patches
@@ -443,7 +443,7 @@ def plot_gmm(Mu, Sigma, dim=None, color=[1, 0, 0], alpha=0.5, linewidth=1, marke
 
 	if not isinstance(color, list) and not isinstance(color, np.ndarray):
 		color = [color] * nbStates
-	elif not isinstance(color[0], basestring) and not isinstance(color, np.ndarray):
+	elif not isinstance(color[0], str) and not isinstance(color, np.ndarray):
 		color = [color] * nbStates
 
 	if not isinstance(alpha, np.ndarray):

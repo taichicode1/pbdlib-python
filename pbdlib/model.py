@@ -1,7 +1,7 @@
 import numpy as np
-from functions import *
-from utils import gaussian_moment_matching
-from plot import plot_gmm
+from .functions import *
+from .utils.gaussian_utils import gaussian_moment_matching
+from .plot import plot_gmm
 
 class Model(object):
 	"""

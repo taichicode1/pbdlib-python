@@ -1,8 +1,8 @@
 import numpy as np
 from .gmm import GMM, MVN
 from .hmm import HMM
-from functions import multi_variate_normal, multi_variate_t
-from utils import gaussian_moment_matching
+from .functions import multi_variate_normal, multi_variate_t
+from .utils.gaussian_utils import gaussian_moment_matching
 from scipy.special import gamma, gammaln, logsumexp
 
 class MTMM(GMM):

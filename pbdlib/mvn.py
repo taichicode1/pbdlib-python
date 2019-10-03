@@ -1,10 +1,10 @@
 import numpy as np
 prec_min = 1e-15
 import sys
-from utils.gaussian_utils import gaussian_conditioning
-from functions import mvn_pdf
-from functions import multi_variate_normal
-import pbdlib as pbd
+from .utils.gaussian_utils import gaussian_conditioning
+from .functions import mvn_pdf
+from .functions import multi_variate_normal
+from .. import pbdlib as pbd
 
 class MVN(object):
 	def __init__(self, mu=None, sigma=None, lmbda=None, lmbda_ns=None, sigma_cv=None, nb_dim=2):

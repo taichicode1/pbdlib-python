@@ -1,6 +1,6 @@
 import numpy as np
-from utils.utils import lifted_transfer_matrix
-import pbdlib as pbd
+from .utils.utils import lifted_transfer_matrix
+from .. import pbdlib as pbd
 
 class LQR(object):
 	def __init__(self, A=None, B=None, nb_dim=2, dt=0.01, horizon=50):
@@ -166,7 +166,7 @@ class LQR(object):
 		elif isinstance(self._gmm_xi, pbd.MVN):
 			return self._gmm_xi.lmbda, self._gmm_xi.mu
 		else:
-			raise ValueError, "Not supported gmm_xi"
+			raise ValueError("Not supported gmm_xi")
 
 	def get_R(self, t):
 		if isinstance(self._gmm_u, pbd.MVN):
@@ -177,7 +177,7 @@ class LQR(object):
 		elif isinstance(self._gmm_u, pbd.GMM):
 			return self._gmm_u.lmbda[t]
 		else:
-			raise ValueError, "Not supported gmm_u"
+			raise ValueError("Not supported gmm_u")
 
 	def ricatti(self):
 		"""
