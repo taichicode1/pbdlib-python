@@ -48,7 +48,6 @@ class HMM(GMM):
     def Trans(self, value):
         self.trans = value
 
-
     def make_finish_state(self, demos, dep_mask=None):
         self.has_finish_state = True
         self.nb_states += 1
@@ -75,7 +74,7 @@ class HMM(GMM):
         self.priors = np.concatenate([self.priors, np.zeros(1)], axis=0)
         pass
 
-    def viterbi(self, demo, reg=False):
+    def viterbi(self, demo, reg=True):
         """
         Compute most likely sequence of state given observations
 
@@ -284,7 +283,6 @@ class HMM(GMM):
             self.Trans += self_trans * np.eye(self.nb_states)
             self.init_priors = np.ones(self.nb_states)/ self.nb_states
 
-
     def gmm_init(self, data, **kwargs):
         if isinstance(data, list):
             data = np.concatenate(data, axis=0)
@@ -449,7 +447,6 @@ class HMM(GMM):
 
                 return True
 
-
         print("EM did not converge")
         return False
 
@@ -466,13 +463,17 @@ class HMM(GMM):
 
         return ll
 
-    def condition(self, data_in, dim_in, dim_out, h=None, gmm=False, return_gmm=False):
-        if gmm:
-            return super(HMM, self).condition(data_in, dim_in, dim_out, return_gmm=return_gmm)
+    def condition(self, data_in, dim_in, dim_out, h=None, return_gmm=False):
+        if return_gmm:
+            return super().condition(data_in, dim_in, dim_out, return_gmm=return_gmm)
         else:
-            a, _, _, _, _ = self.compute_messages(data_in, marginal=dim_in)
+            if dim_in == slice(0, 1):
+                dim_in_msg = []
+            else:
+                dim_in_msg = dim_in
+            a, _, _, _, _ = self.compute_messages(data_in, marginal=dim_in_msg)
 
-            return super(HMM, self).condition(data_in, dim_in, dim_out, h=a)
+            return super().condition(data_in, dim_in, dim_out, h=a)
 
     """
     To ensure compatibility

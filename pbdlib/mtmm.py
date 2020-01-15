@@ -1,20 +1,45 @@
 import numpy as np
 from .gmm import GMM, MVN
 from .hmm import HMM
-from .functions import multi_variate_normal, multi_variate_t
-from .utils.gaussian_utils import gaussian_moment_matching
-from scipy.special import gamma, gammaln, logsumexp
+from scipy.special import logsumexp
+from sklearn import mixture
+from scipy.stats import wishart
+from .model import *
+from .utils import gaussian_moment_matching
 
-class MTMM(GMM):
+
+class MTMM(Model):
 	"""
 	Multivariate t-distribution mixture
 	"""
 
-	def __init__(self, *args, **kwargs):
-		self._nu = kwargs.pop('nu', None)
-		GMM.__init__(self, *args, **kwargs)
+	def __init__(self, nb_states=1, nb_dim=None, init_zeros=False, mu=None, lmbda=None, sigma=None, priors=None,
+				 nu=None):
+		"""
+		:param
+		"""
 
+		if mu is not None:
+			nb_states = mu.shape[0]
+			nb_dim = mu.shape[-1]
+
+		super().__init__(nb_states, nb_dim)
+
+		# flag to indicate that publishing was not init
+		self.publish_init = False
+
+		self._mu = mu
+		self._lmbda = lmbda
+		self._sigma = sigma
+		self._priors = priors
+		self._nu = nu
 		self._k = None
+		self.cond = None
+		self.aleatoric = None
+		self.epistemic = None
+
+		if init_zeros:
+			self.init_zeros()
 
 	def __add__(self, other):
 		if isinstance(other, MVN):
@@ -41,8 +66,15 @@ class MTMM(GMM):
 		return mtmm
 
 	def get_matching_gmm(self):
-		return GMM(mu=self.mu, sigma=self.sigma * (self.nu/(self.nu-2.))[:, None, None],
-				   priors=self.priors)
+		if self.mu.ndim == 3:
+			return GMM(mu=self.mu, sigma=self.sigma * (self.nu / (self.nu - 2.))[:, None, None, None],
+					   priors=self.priors)
+		else:
+			return GMM(mu=self.mu, sigma=self.sigma * (self.nu / (self.nu - 2.))[:, None, None], priors=self.priors)
+
+	def get_matching_gaussian(self):
+		gmm = self.get_matching_gmm()
+		return gaussian_moment_matching(gmm.mu, gmm.sigma, gmm.priors)
 
 	@property
 	def k(self):
@@ -63,14 +95,12 @@ class MTMM(GMM):
 	def condition_gmm(self, data_in, dim_in, dim_out):
 		sample_size = data_in.shape[0]
 
-		# compute responsabilities
+		# compute responsibilities
 		mu_in, sigma_in = self.get_marginal(dim_in)
 
 		h = np.zeros((self.nb_states, sample_size))
 		for i in range(self.nb_states):
-			h[i, :] = multi_variate_t(data_in[None], self.nu[i],
-									  mu_in[i],
-									  sigma_in[i])
+			h[i, :] = multi_variate_t(data_in[None], self.nu[i], mu_in[i], sigma_in[i])
 
 		h += np.log(self.priors)[:, None]
 		h = np.exp(h).T
@@ -99,7 +129,6 @@ class MTMM(GMM):
 
 		mu_est, sigma_est = (np.asarray(mu_est)[:, 0], np.asarray(sigma_est)[:, 0])
 
-
 		gmm_out = MTMM(nb_states=self.nb_states, nb_dim=mu_out.shape[1])
 		gmm_out.nu = self.nu + gmm_out.nb_dim
 		gmm_out.mu = mu_est
@@ -118,25 +147,28 @@ class MTMM(GMM):
 		# s = np.sum(np.einsum('kij,kai->kaj', self.lmbda, dx) * dx, axis=2) # [nb_states, nb_samples]
 
 		# faster
-		s = np.sum(np.matmul(self.lmbda[:, None], dx[:, :, :, None])[:, :, :, 0] * dx, axis=2) # [nb_states, nb_samples]
+		s = np.sum(np.matmul(self.lmbda[:, None], dx[:, :, :, None])[:, :, :, 0] * dx,
+				   axis=2)  # [nb_states, nb_samples]
 
 		log_norm = self.log_normalization[:, None]
-		return log_norm + (-(self.nu + self.nb_dim) / 2)[:, None] * np.log(1 + s/ self.nu[:, None])
+		return log_norm + (-(self.nu + self.nb_dim) / 2)[:, None] * np.log(1 + s / self.nu[:, None])
 
 	def obs_likelihood(self, demo=None, dep=None, marginal=None, *args, **kwargs):
 		B = self.log_prob_components(demo)
 		return np.exp(B), B
+
 	@property
 	def log_normalization(self):
 		if self._log_normalization is None:
 			self._log_normalization = gammaln((self.nu + self.nb_dim) / 2) + 0.5 * np.linalg.slogdet(self.lmbda)[1] - \
-				gammaln(self.nu / 2) - self.nb_dim / 2. * (np.log(self.nu) + np.log(np.pi))
+									  gammaln(self.nu / 2) - self.nb_dim / 2. * (np.log(self.nu) + np.log(np.pi))
 
 		return self._log_normalization
 
 	# @profile
 	def condition(self, data_in, dim_in, dim_out, h=None, return_gmm=False, reg_in=1e-20,
-				  concat=True, return_linear=False, tmp=False):
+				  concat=True, return_linear=False, tmp=False, moment_matching=False, return_aleatoric=False,
+				  return_epistemic=False):
 		"""
 		[1] M. Hofert, 'On the Multivariate t Distribution,' R J., vol. 5, pp. 129-136, 2013.
 
@@ -180,16 +212,15 @@ class MTMM(GMM):
 			h = np.exp(h).T
 			h /= np.sum(h, axis=1, keepdims=True)
 
-		#[nb_samples, nb_states]
-		self._h = h # storing value
+		# [nb_samples, nb_states]
+		self._h = h  # storing value
 
 		mu_out, sigma_out = self.get_marginal(dim_out)  # get marginal distribution of x_out
-
 		# get conditional distribution of x_out given x_in for each states p(x_out|x_in, k)
 
 		_, sigma_in_out = self.get_marginal(dim_in, dim_out)
 
-		if not concat: # faster when more datapointsS
+		if not concat:  # faster when more datapoints
 			mu_est, sigma_est = ([], [])
 			inv_sigma_in_in, inv_sigma_out_in = ([], [])
 
@@ -201,7 +232,7 @@ class MTMM(GMM):
 												 inv_sigma_out_in[-1], dx)]
 
 				s = np.sum(np.einsum('ai,ij->aj', dx, inv_sigma_in_in[-1]) * dx, axis=1)
-				a = (self.nu[i] + s)/(self.nu[i] + mu_in.shape[1])
+				a = (self.nu[i] + s) / (self.nu[i] + mu_in.shape[1])
 
 				sigma_est += [a[:, None, None] *
 							  (sigma_out[i] - inv_sigma_out_in[-1].dot(sigma_in_out[i]))[None]]
@@ -228,32 +259,56 @@ class MTMM(GMM):
 			# mu_est = mu_out[:, None] + np.einsum('aij,abj->abi', inv_sigma_out_in, dx)
 			mu_est = mu_out[:, None] + np.matmul(inv_sigma_out_in[:, None], dx[:, :, :, None])[:, :, :, 0]
 
-			s = np.sum(np.matmul(inv_sigma_in_in[:, None], dx[:, :, :, None])[:, :, :, 0] * dx,
-					   axis=2)
+			s = np.sum(np.matmul(inv_sigma_in_in[:, None], dx[:, :, :, None])[:, :, :, 0] * dx, axis=2)
 			# s = np.sum(np.einsum('kij,kai->kaj',inv_sigma_in_in, dx) * dx, axis=2)
-
-			a = (self.nu[:, None] + s) / (self.nu[:, None] + mu_in.shape[1])
-
+			denom = (self.nu[:, None] + mu_in.shape[1])
+			# a = (self.nu[:, None] + s) / denom
+			gmr = (sigma_out - np.matmul(inv_sigma_out_in, sigma_in_out))[:, None]
 			# sigma_est = a[:, :, None, None] * (sigma_out - np.einsum('aij,ajk->aik', inv_sigma_out_in, sigma_in_out))[:, None]
-			sigma_est = a[:, :, None, None] * (sigma_out - np.matmul(inv_sigma_out_in, sigma_in_out))[:, None]
+			aleatoric = (np.tile(self.nu[:, None], (1, sample_size)) / denom)[:, :, None, None] * gmr
+			epistemic = (s / denom)[:, :, None, None] * gmr
+			sigma_est = aleatoric + epistemic
 
 		nu = self.nu + mu_in.shape[1]
 		# the conditional distribution is now a still a mixture
+		if was_not_batch:
+			mu_est = mu_est[:, 0]
+			sigma_est = sigma_est[:, 0]
+			aleatoric = aleatoric[:, 0]
+			epistemic = epistemic[:, 0]
+			# nu = nu[:, 0]
+			h = h[0]
+
+		self.cond = MTMM(nb_states=self.nb_states, mu=mu_est, sigma=sigma_est, priors=h, nu=nu)
+		if return_aleatoric:
+			self.aleatoric = MTMM(nb_states=self.nb_states, mu=mu_est, sigma=aleatoric, priors=h, nu=nu)
+		if return_epistemic:
+			self.epistemic = MTMM(nb_states=self.nb_states, mu=mu_est, sigma=epistemic, priors=h, nu=nu)
 
 		if return_gmm:
-			return h, mu_est, sigma_est * (nu/(nu-2.))[:, None, None, None]
+			gmm = GMM(nb_states=self.nb_states)
+			gmm.mu = mu_est
+			gmm.priors = h
+			gmm.sigma = sigma_est * (nu / (nu - 2.))[:, None, None, None]
+			return gmm
+
 		elif return_linear:
 			As = inv_sigma_out_in
 			bs = mu_out - np.matmul(inv_sigma_out_in, mu_in[:, :, None])[:, :, 0]
 			A = np.einsum('ak,kij->aij', h, As)
 			b = np.einsum('ak,ki->ai', h, bs)
 			if was_not_batch:
-				return A[0], b[0], gaussian_moment_matching(mu_est, sigma_est * (nu/(nu-2.))[:, None, None, None], h)[1][0]
+				return A[0], b[0], \
+					   gaussian_moment_matching(mu_est, sigma_est * (nu / (nu - 2.))[:, None, None, None], h)[1][0]
 			else:
-				return A, b, gaussian_moment_matching(mu_est, sigma_est * (nu/(nu-2.))[:, None, None, None], h)[1]
-		else:
+				return A, b, gaussian_moment_matching(mu_est, sigma_est * (nu / (nu - 2.))[:, None, None, None], h)[1]
+
+		elif moment_matching:
 			# apply moment matching to get a single MVN for each datapoint
-			return gaussian_moment_matching(mu_est, sigma_est * (nu/(nu-2.))[:, None, None, None], h)
+			return gaussian_moment_matching(mu_est, sigma_est * (nu / (nu - 2.))[:, None, None, None], h)
+
+		else:
+			return self.cond
 
 	def get_pred_post_uncertainty(self, data_in, dim_in, dim_out, log=False):
 		"""
@@ -271,7 +326,6 @@ class MTMM(GMM):
 				Overrides marginal probability of states given input dimensions
 		:return:
 		"""
-
 		sample_size = data_in.shape[0]
 
 		# compute marginal probabilities of states given observation p(k|x_in)
@@ -280,15 +334,15 @@ class MTMM(GMM):
 		h = np.zeros((self.nb_states, sample_size))
 		for i in range(self.nb_states):
 			h[i, :] = multi_variate_t(data_in, self.nu[i],
-										   mu_in[i],
-										   sigma_in[i])
+									  mu_in[i],
+									  sigma_in[i])
 
 		h += np.log(self.priors)[:, None]
 		h = np.exp(h).T
 		h /= np.sum(h, axis=1, keepdims=True)
 		h = h.T
 
-		self._h = h # storing value
+		self._h = h  # storing value
 
 		mu_out, sigma_out = self.get_marginal(dim_out)  # get marginal distribution of x_out
 		mu_est, sigma_est = ([], [])
@@ -308,7 +362,7 @@ class MTMM(GMM):
 											 inv_sigma_out_in[-1], dx)]
 
 			s = np.sum(np.einsum('ai,ij->aj', dx, inv_sigma_in_in[-1]) * dx, axis=1)
-			a = (self.nu[i] + s)/(self.nu[i] + mu_in.shape[1])
+			a = (self.nu[i] + s) / (self.nu[i] + mu_in.shape[1])
 
 			sigma_est += [a[:, None, None] *
 						  (sigma_out[i] - inv_sigma_out_in[-1].dot(sigma_in_out[i]))[None]]
@@ -326,10 +380,10 @@ class MTMM(GMM):
 			return np.linalg.slogdet(_covs)[1]
 		else:
 			return np.linalg.det(_covs)
-		# the conditional distribution is now a still a mixture
+			# the conditional distribution is now a still a mixture
 
 			# apply moment matching to get a single MVN for each datapoint
-			return gaussian_moment_matching(mu_est, sigma_est * (nu/(nu-2.))[:, None, None, None], h.T)
+			return gaussian_moment_matching(mu_est, sigma_est * (nu / (nu - 2.))[:, None, None, None], h.T)
 
 	def get_pred_post_uncertainty(self, data_in, dim_in, dim_out):
 		"""
@@ -347,7 +401,6 @@ class MTMM(GMM):
 				Overrides marginal probability of states given input dimensions
 		:return:
 		"""
-
 		sample_size = data_in.shape[0]
 
 		# compute marginal probabilities of states given observation p(k|x_in)
@@ -356,15 +409,15 @@ class MTMM(GMM):
 		h = np.zeros((self.nb_states, sample_size))
 		for i in range(self.nb_states):
 			h[i, :] = multi_variate_t(data_in, self.nu[i],
-										   mu_in[i],
-										   sigma_in[i])
+									  mu_in[i],
+									  sigma_in[i])
 
 		h += np.log(self.priors)[:, None]
 		h = np.exp(h).T
 		h /= np.sum(h, axis=1, keepdims=True)
 		h = h.T
 
-		self._h = h # storing value
+		self._h = h  # storing value
 
 		mu_out, sigma_out = self.get_marginal(dim_out)  # get marginal distribution of x_out
 		mu_est, sigma_est = ([], [])
@@ -384,7 +437,7 @@ class MTMM(GMM):
 											 inv_sigma_out_in[-1], dx)]
 
 			s = np.sum(np.einsum('ai,ij->aj', dx, inv_sigma_in_in[-1]) * dx, axis=1)
-			a = (self.nu[i] + s)/(self.nu[i] + mu_in.shape[1])
+			a = (self.nu[i] + s) / (self.nu[i] + mu_in.shape[1])
 
 			sigma_est += [a[:, None, None] *
 						  (sigma_out[i] - inv_sigma_out_in[-1].dot(sigma_in_out[i]))[None]]
@@ -400,7 +453,35 @@ class MTMM(GMM):
 		# return a
 		return np.linalg.det(_covs)
 
-		# the conditional distribution is now a still a mixture
+	# the conditional distribution is now a still a mixture
+
+	def sample_MTM(self, nu, mu, sigma, size=1):
+		x = np.random.chisquare(nu, size) / nu
+		z = np.random.multivariate_normal(np.zeros_like(mu), sigma, (size,))
+		sample = mu + z / np.sqrt(x)[:, None]  # same output format as random.multivariate_normal
+		return sample
+
+	def sample(self, n_samples=1, random_state=None):
+
+		weight_cdf = np.cumsum(self.priors)
+
+		X = np.empty((n_samples, self.mu.shape[-1]))
+		rand = np.random.rand(n_samples)
+		# decide which component to use for each sample
+		comps = weight_cdf.searchsorted(rand)
+		# for each component, generate all needed samples
+		for comp in range(self.nb_states):
+			# occurrences of current component in X
+			comp_in_X = (comp == comps)
+			# number of those occurrences
+			num_comp_in_X = comp_in_X.sum()
+
+			X[comp_in_X] = self.sample_MTM(
+				self.nu[comp],
+				self.mu[comp],
+				self.sigma[comp],
+				size=num_comp_in_X)
+		return X
 
 
 class VBayesianGMM(MTMM):
@@ -408,19 +489,15 @@ class VBayesianGMM(MTMM):
 		"""
 		self.model = tff.VBayesianGMM(
 			{'n_components':5, 'n_init':4, 'reg_covar': 0.006 ** 2,
-         'covariance_prior': 0.02 ** 2 * np.eye(12),'mean_precision_prior':1e-9})
+		'covariance_prior': 0.02 ** 2 * np.eye(12),'mean_precision_prior':1e-9})
 
 		:param sk_parameters:
 		:param args:
 		:param kwargs:
 		"""
-		MTMM.__init__(self, *args, **kwargs)
-
-		from sklearn import mixture
 
 		self._training_data = None
 		self._posterior_predictive = None
-
 
 		self._sk_model = mixture.BayesianGaussianMixture(**sk_parameters)
 		self._posterior_samples = None
@@ -434,8 +511,7 @@ class VBayesianGMM(MTMM):
 		return self._posterior_samples
 
 	def make_posterior_samples(self, nb_samples=10):
-		from scipy.stats import wishart
-		from .gmm import GMM
+
 		self._posterior_samples = []
 
 		m = self._sk_model
@@ -454,7 +530,7 @@ class VBayesianGMM(MTMM):
 				[np.random.multivariate_normal(
 					m.means_[i], np.linalg.inv(m.mean_precision_[i] * _gmm.lmbda[i])
 				)
-				for i in range(nb_states)])
+					for i in range(nb_states)])
 
 			_gmm.priors = m.weights_
 
@@ -484,13 +560,15 @@ class VBayesianGMM(MTMM):
 
 		self.nu = np.copy(m.degrees_of_freedom_) - self.nb_dim + 1
 
-		self.nu_prior = m.degrees_of_freedom_prior
+		self.nu_prior = m.degrees_of_freedom_prior_
+		# print(m.degrees_of_freedom_prior_)
 
 		w_k = np.linalg.inv(m.covariances_ * m.degrees_of_freedom_[:, None, None])
-		l_k = ((m.degrees_of_freedom_[:, None, None] + 1 - self.nb_dim) * m.mean_precision_[:, None, None])/ \
+		l_k = ((m.degrees_of_freedom_[:, None, None] + 1 - self.nb_dim) * m.mean_precision_[:, None, None]) / \
 			  (1. + m.mean_precision_[:, None, None]) * w_k
 
 		self.sigma = np.copy(np.linalg.inv(l_k))
+		super().__init__(mu=self.mu, lmbda=self.lmbda, sigma=self.sigma, nu=self.nu, priors=self.priors)
 
 	def condition(self, *args, **kwargs):
 		"""
@@ -517,7 +595,8 @@ class VBayesianGMM(MTMM):
 
 		for _gmm in self.posterior_samples:
 			mu, sigma = _gmm.condition(*args, **kwargs)
-			mus += [mu]; sigmas += [sigma]
+			mus += [mu]
+			sigmas += [sigma]
 
 		mus, sigmas = np.array(mus), np.array(sigmas)
 		# moment matching
@@ -531,6 +610,7 @@ class VBayesianGMM(MTMM):
 		else:
 			return mu, sigma
 
+
 class VBayesianHMM(VBayesianGMM, HMM):
 	def __init__(self, *args, **kwargs):
 		VBayesianGMM.__init__(self, *args, **kwargs)
@@ -540,6 +620,7 @@ class VBayesianHMM(VBayesianGMM, HMM):
 	def obs_likelihood(self, demo=None, dep=None, marginal=None, *args, **kwargs):
 		return VBayesianGMM.obs_likelihood(self, demo=demo, dep=dep, marginal=marginal)
 
+
 class VMBayesianGMM(VBayesianGMM):
 	def __init__(self, n, sk_parameters, *args, **kwargs):
 		"""
@@ -547,7 +628,7 @@ class VMBayesianGMM(VBayesianGMM):
 
 		self.model = tff.VMBayesianGMM(
 			{'n_components':5, 'n_init':4, 'reg_covar': 0.006 ** 2,
-         'covariance_prior': 0.02 ** 2 * np.eye(12),'mean_precision_prior':1e-9})
+		'covariance_prior': 0.02 ** 2 * np.eye(12),'mean_precision_prior':1e-9})
 
 		:param n:  	number of evaluations
 		:param sk_parameters:
@@ -572,7 +653,7 @@ class VMBayesianGMM(VBayesianGMM):
 		# TODO check how to compute priors in a good way
 		params = zip(*params)
 		mu, sigma = gaussian_moment_matching(np.array(params[0]),
-													   np.array(params[1]))
+											 np.array(params[1]))
 
 		return mu, sigma
 
