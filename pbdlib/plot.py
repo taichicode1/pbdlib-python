@@ -392,7 +392,7 @@ def plot_mixture_linear_system(model, mode='glob', nb_sub=20, gmm=True, min_alph
 
 def plot_gmm(Mu, Sigma, dim=None, color=[1, 0, 0], alpha=0.5, linewidth=1, markersize=6,
 			 ax=None, empty=False, edgecolor=None, edgealpha=None, priors=None,
-			 border=False, nb=1, swap=True, center=True):
+			 border=False, nb=1, swap=True, center=True, zorder=20):
 	''' This function displays the parameters of a Gaussian Mixture Model (GMM).
 
 	 Inputs -----------------------------------------------------------------
@@ -470,7 +470,7 @@ def plot_gmm(Mu, Sigma, dim=None, color=[1, 0, 0], alpha=0.5, linewidth=1, marke
 		if priors is not None: a *= priors[i]
 
 		polygon = plt.Polygon(points.transpose().tolist(), facecolor=c, alpha=a,
-							  linewidth=linewidth, zorder=20, edgecolor=edgecolor)
+							  linewidth=linewidth, zorder=zorder, edgecolor=edgecolor)
 
 		if edgealpha is not None:
 			plt.plot(points[0,:], points[1,:], color=edgecolor)
@@ -482,7 +482,7 @@ def plot_gmm(Mu, Sigma, dim=None, color=[1, 0, 0], alpha=0.5, linewidth=1, marke
 																				   i].reshape(
 				[2, 1])
 			polygon_2 = plt.Polygon(points.transpose().tolist(), facecolor=c, alpha=a / 2.,
-									linewidth=linewidth, zorder=15, edgecolor=edgecolor)
+									linewidth=linewidth, zorder=zorder-5, edgecolor=edgecolor)
 			# Set properties
 		# polygon.set_alpha(0.3)
 		# polygon.set_color(color)

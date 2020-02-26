@@ -191,7 +191,7 @@ class LQR(object):
 		_v = [None for i in range(self._horizon)]
 		_K = [None for i in range(self._horizon-1)]
 		_Kv = [None for i in range(self._horizon-1)]
-		_Q = [None for i in range(self._horizon-1)]
+ 		_Q = [None for i in range(self._horizon-1)]
 		# _S = np.empty((self._horizon, self.xi_dim, self.xi_dim))
 		# _v = np.empty((self._horizon, self.xi_dim))
 		# _K = np.empty((self._horizon-1, self.u_dim, self.xi_dim))
@@ -213,11 +213,11 @@ class LQR(object):
 			_S[t] = self.A.T.dot(_S[t+1]).dot(AmBK) + Q
 			_v[t] = AmBK.T.dot(_v[t+1]) + Q.dot(z)
 
-		self._S = _S
-		self._v = _v
-		self._K = _K
-		self._Kv = _Kv
-		self._Q = _Q
+		self._S = np.array(_S)
+		self._v = np.array(_v)
+		self._K = np.array(_K)
+		self._Kv = np.array(_Kv)
+		self._Q = np.array(_Q)
 
 		self._ds = None
 		self._cs = None
