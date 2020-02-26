@@ -1,7 +1,7 @@
-import numpy as np
-from functions import *
-from utils import gaussian_moment_matching
-from plot import plot_gmm
+from .functions import *
+from .utils.gaussian_utils import gaussian_moment_matching
+from .plot import plot_gmm
+
 
 class Model(object):
 	"""
@@ -13,7 +13,6 @@ class Model(object):
 		self._priors = None
 		self.nb_dim = nb_dim
 		self.nb_states = nb_states
-
 
 		self._mu = None
 		self._sigma = None  # covariance matrix
@@ -181,7 +180,6 @@ class Model(object):
 				dGrid = np.ix_(dep, dep)
 				mask[dGrid] = 1.
 
-
 		return mask
 
 	def dep_mask(self, deps):
@@ -220,7 +218,6 @@ class Model(object):
 		self._mu = np.array([np.zeros(self.nb_dim) for i in range(self.nb_states)])
 		self._sigma = np.array([np.eye(self.nb_dim) for i in range(self.nb_states)])
 
-
 	def plot(self, *args, **kwargs):
 		"""
 		Plot GMM, circle is 1 std
@@ -239,8 +236,7 @@ class Model(object):
 		"""
 		zs = np.array([np.random.multinomial(1, self.priors) for _ in range(size)]).T
 
-		xs = [z[:, None] * np.random.multivariate_normal(m, s, size=size)
-			  for z, m, s in zip(zs, self.mu, self.sigma)]
+		xs = [z[:, None] * np.random.multivariate_normal(m, s, size=size) for z, m, s in zip(zs, self.mu, self.sigma)]
 
 		return np.sum(xs, axis=0)
 
@@ -250,7 +246,6 @@ class Model(object):
 
 		# get conditional distribution of x_out given x_in for each states p(x_out|x_in, k)
 		_, sigma_in_out = self.get_marginal(dim_in, dim_out)
-
 
 		inv_sigma_in_in = np.linalg.inv(
 			sigma_in)
@@ -265,7 +260,6 @@ class Model(object):
 
 	def condition(self, data_in, dim_in, dim_out, h=None, return_gmm=False):
 		"""
-
 		:param data_in:		[np.array([nb_timestep, nb_dim])
 		:param dim_in:
 		:param dim_out:
@@ -273,7 +267,6 @@ class Model(object):
 		:return:
 		"""
 		sample_size = data_in.shape[0]
-
 
 		# compute responsabilities
 		mu_in, sigma_in = self.get_marginal(dim_in)
@@ -287,10 +280,10 @@ class Model(object):
 
 			h += np.log(self.priors)[:, None]
 			h = np.exp(h).T
-			h /= np.sum(h, axis=1, keepdims=True)
+			h /= (np.sum(h, axis=1, keepdims=True) + realmin)
 			h = h.T
 
-		self._h = h
+		# self._h = h
 		mu_out, sigma_out = self.get_marginal(dim_out)
 		mu_est, sigma_est = ([], [])
 
@@ -302,15 +295,14 @@ class Model(object):
 			inv_sigma_in_in += [np.linalg.inv(sigma_in[i])]
 			inv_sigma_out_in += [sigma_in_out[i].T.dot(inv_sigma_in_in[-1])]
 
-			mu_est += [mu_out[i] + np.einsum('ij,aj->ai',
-												inv_sigma_out_in[-1], data_in - mu_in[i])]
+			mu_est += [mu_out[i] + np.einsum('ij,aj->ai', inv_sigma_out_in[-1], data_in - mu_in[i])]
 
 			sigma_est += [sigma_out[i] - inv_sigma_out_in[-1].dot(sigma_in_out[i])]
 
 		mu_est, sigma_est = (np.asarray(mu_est), np.asarray(sigma_est))
 
 		if return_gmm:
-			return  h, mu_est, sigma_est
+			return h, mu_est, sigma_est
 		# return np.mean(mu_est, axis=0)
 		else:
 

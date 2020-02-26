@@ -1,4 +1,5 @@
-from demos import *
+from .demos import *
+import pbdlib as pbd
 
 class CoordinateSys2D(object):
 	x, alpha, d = np.array([0, 0]), 0, 0

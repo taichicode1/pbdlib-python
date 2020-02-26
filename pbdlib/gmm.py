@@ -1,19 +1,21 @@
 import numpy as np
-from model import *
-from functions import multi_variate_normal
+from .model import *
+from .functions import multi_variate_normal
 from scipy.linalg import block_diag
 
 from termcolor import colored
-from mvn import MVN
+from .mvn import MVN
 
 
 class GMM(Model):
-	def __init__(self, nb_states=1, nb_dim=None, init_zeros=False, mu=None, lmbda=None, sigma=None, priors=None):
+	def __init__(self, nb_states=1, nb_dim=None, init_zeros=False, mu=None, lmbda=None,
+				 sigma=None, priors=None):
 		if mu is not None:
 			nb_states = mu.shape[0]
 			nb_dim = mu.shape[-1]
 
 		Model.__init__(self, nb_states, nb_dim)
+
 		# flag to indicate that publishing was not init
 		self.publish_init = False
 
@@ -24,6 +26,7 @@ class GMM(Model):
 
 		if init_zeros:
 			self.init_zeros()
+
 
 	def get_matching_mvn(self, max=False, mass=None):
 		if max:
@@ -44,6 +47,7 @@ class GMM(Model):
 
 		return mvn
 
+
 	def moment_matching(self, h):
 		"""
 		Perform moment matching to approximate a mixture of Gaussian as a Gaussian
@@ -55,11 +59,12 @@ class GMM(Model):
 			h = h[None]
 
 		mus = np.einsum('ak,ki->ai', h, self.mu)
-		dmus = self.mu[None] - mus[:, None] # nb_timesteps, nb_states, nb_dim
+		dmus = self.mu[None] - mus[:, None]  # nb_timesteps, nb_states, nb_dim
 		sigmas = np.einsum('ak,kij->aij', h, self.sigma) + \
-				 np.einsum('ak,akij->aij',h , np.einsum('aki,akj->akij', dmus, dmus))
+				 np.einsum('ak,akij->aij', h, np.einsum('aki,akj->akij', dmus, dmus))
 
 		return mus, sigmas
+
 
 	def __add__(self, other):
 		if isinstance(other, MVN):
@@ -73,6 +78,7 @@ class GMM(Model):
 
 		else:
 			raise NotImplementedError
+
 
 	def __mul__(self, other):
 		"""
@@ -89,15 +95,15 @@ class GMM(Model):
 			gmm.lmbda = self.lmbda + other.lmbda[None]
 			gmm.mu = np.einsum('aij,aj->ai', gmm.sigma, gmm.mu)
 
-			Z = np.linalg.slogdet(self.lmbda)[1]\
+			Z = np.linalg.slogdet(self.lmbda)[1] \
 				+ np.linalg.slogdet(other.lmbda)[1] \
 				- 0.5 * np.linalg.slogdet(gmm.lmbda)[1] \
 				- self.nb_dim / 2. * np.log(2 * np.pi) \
 				+ 0.5 * (np.einsum('ai,aj->a',
 								   np.einsum('ai,aij->aj', gmm.mu, gmm.lmbda), gmm.mu)
-						-np.einsum('ai,aj->a',
-								   np.einsum('ai,aij->aj', self.mu, self.lmbda), self.mu)
-						-np.sum(np.einsum('i,ij->j', other.mu, other.lmbda) * other.mu)
+						 - np.einsum('ai,aj->a',
+									 np.einsum('ai,aij->aj', self.mu, self.lmbda), self.mu)
+						 - np.sum(np.einsum('i,ij->j', other.mu, other.lmbda) * other.mu)
 						 )
 			gmm.priors = np.exp(Z) * self.priors
 			gmm.priors /= np.sum(gmm.priors)
@@ -113,6 +119,7 @@ class GMM(Model):
 			gmm.mu = np.einsum('aij,aj->ai', gmm.sigma, gmm.mu)
 
 		return gmm
+
 
 	def __mod__(self, other):
 		"""
@@ -133,8 +140,8 @@ class GMM(Model):
 
 		gmm.mu = np.einsum('abij,abj->abi', gmm.sigma, gmm.mu)
 
-
 		return gmm
+
 
 	def marginal_model(self, dims):
 		"""
@@ -143,12 +150,13 @@ class GMM(Model):
 		:type dims: slice
 		:return:
 		"""
-		gmm = GMM(nb_dim=dims.stop-dims.start, nb_states=self.nb_states)
+		gmm = GMM(nb_dim=dims.stop - dims.start, nb_states=self.nb_states)
 		gmm.priors = self.priors
 		gmm.mu = self.mu[:, dims]
 		gmm.sigma = self.sigma[:, dims, dims]
 
 		return gmm
+
 
 	def lintrans(self, A, b):
 		"""
@@ -163,9 +171,10 @@ class GMM(Model):
 		gmm.priors = self.priors
 		gmm.mu = np.einsum('ij,aj->ai', A, self.mu) + b
 		gmm.lmbda = np.einsum('aij,kj->aik',
-								 np.einsum('ij,ajk->aik', A, self.lmbda), A)
+							  np.einsum('ij,ajk->aik', A, self.lmbda), A)
 
 		return gmm
+
 
 	def concatenate_gaussian(self, q, get_mvn=True, reg=None):
 		"""
@@ -180,7 +189,8 @@ class GMM(Model):
 		"""
 		if reg is None:
 			if not get_mvn:
-				return np.concatenate([self.mu[i] for i in q]), block_diag(*[self.sigma[i] for i in q])
+				return np.concatenate([self.mu[i] for i in q]), block_diag(
+					*[self.sigma[i] for i in q])
 			else:
 				mvn = MVN()
 				mvn.mu = np.concatenate([self.mu[i] for i in q])
@@ -199,7 +209,6 @@ class GMM(Model):
 				mvn._lmbda = block_diag(*[np.linalg.inv(self.sigma[i] + reg) for i in q])
 
 				return mvn
-
 
 
 	def compute_resp(self, demo=None, dep=None, table=None, marginal=None, norm=True):
@@ -226,9 +235,10 @@ class GMM(Model):
 														  sigma[dGrid][:, :, 0], log=False)
 		B *= self.priors[:, None]
 		if norm:
-			return B/np.sum(B, axis=0)
+			return B / np.sum(B, axis=0)
 		else:
 			return B
+
 
 	def init_params_scikit(self, data, cov_type='full'):
 		from sklearn.mixture import BayesianGaussianMixture, GaussianMixture
@@ -237,7 +247,8 @@ class GMM(Model):
 
 		self.mu = gmm_init.means_
 		if cov_type == 'diag':
-			self.sigma = np.array([np.diag(gmm_init.covariances_[i]) for i in range(self.nb_states)])
+			self.sigma = np.array(
+				[np.diag(gmm_init.covariances_[i]) for i in range(self.nb_states)])
 		else:
 			self.sigma = gmm_init.covariances_
 
@@ -247,12 +258,13 @@ class GMM(Model):
 
 		self.init_priors = np.ones(self.nb_states) * 1. / self.nb_states
 
+
 	def init_params_kmeans(self, data):
 		from sklearn.cluster import KMeans
 		km_init = KMeans(n_clusters=self.nb_states)
 		km_init.fit(data)
 		self.mu = km_init.cluster_centers_
-		self.priors = np.ones(self.nb_states)/ self.nb_states
+		self.priors = np.ones(self.nb_states) / self.nb_states
 		self.sigma = np.array([np.eye(self.nb_dim) for i in range(self.nb_states)])
 
 		self.Trans = np.ones((self.nb_states, self.nb_states)) * 0.01
@@ -266,15 +278,16 @@ class GMM(Model):
 				(data.shape[0] - 1)
 
 		self.mu = np.array([np.random.multivariate_normal(mu, sigma)
-			 for i in range(self.nb_states)])
+							for i in range(self.nb_states)])
 
 		self.sigma = np.array([sigma + self.reg for i in range(self.nb_states)])
 
 		self.priors = np.ones(self.nb_states) / self.nb_states
 
+
 	def em(self, data, reg=1e-8, maxiter=100, minstepsize=1e-5, diag=False, reg_finish=False,
 		   kmeans_init=False, random_init=True, dep_mask=None, verbose=False, only_scikit=False,
-		    no_init=False):
+		   no_init=False):
 		"""
 
 		:param data:	 		[np.array([nb_timesteps, nb_dim])]
@@ -299,7 +312,7 @@ class GMM(Model):
 
 		nb_min_steps = 5  # min num iterations
 		nb_max_steps = maxiter  # max iterations
-		max_diff_ll = minstepsize # max log-likelihood increase
+		max_diff_ll = minstepsize  # max log-likelihood increase
 
 		nb_samples = data.shape[0]
 
@@ -326,7 +339,8 @@ class GMM(Model):
 
 			for i in range(self.nb_states):
 				L_log[i, :] = np.log(self.priors[i]) + multi_variate_normal(data.T, self.mu[i],
-												   self.sigma[i], log=True)
+																			self.sigma[i],
+																			log=True)
 
 			L = np.exp(L_log)
 			GAMMA = L / np.sum(L, axis=0)
@@ -334,12 +348,12 @@ class GMM(Model):
 
 			# M-step
 			self.mu = np.einsum('ac,ic->ai', GAMMA2,
-									data)  # a states, c sample, i dim
+								data)  # a states, c sample, i dim
 
 			dx = data[None, :] - self.mu[:, :, None]  # nb_dim, nb_states, nb_samples
 
 			self.sigma = np.einsum('acj,aic->aij', np.einsum('aic,ac->aci', dx, GAMMA2),
-									   dx)  # a states, c sample, i-j dim
+								   dx)  # a states, c sample, i-j dim
 
 			self.sigma += self.reg
 
@@ -354,20 +368,23 @@ class GMM(Model):
 			# Update initial state probablility vector
 			self.priors = np.mean(GAMMA, axis=1)
 
-
 			LL[it] = np.mean(np.log(np.sum(L, axis=0)))
 			# Check for convergence
 			if it > nb_min_steps:
 				if LL[it] - LL[it - 1] < max_diff_ll:
 					if reg_finish is not False:
 						self.sigma = np.einsum(
-							'acj,aic->aij', np.einsum('aic,ac->aci', dx, GAMMA2), dx) + reg_finish
+							'acj,aic->aij', np.einsum('aic,ac->aci', dx, GAMMA2),
+							dx) + reg_finish
 
 					if verbose:
-						print colored('Converged after %d iterations: %.3e' % (it, LL[it]), 'red', 'on_white')
+						print(
+							colored('Converged after %d iterations: %.3e' % (it, LL[it]), 'red',
+									'on_white'))
 					return GAMMA
 		if verbose:
-			print "GMM did not converge before reaching max iteration. Consider augmenting the number of max iterations."
+			print(
+				"GMM did not converge before reaching max iteration. Consider augmenting the number of max iterations.")
 		return GAMMA
 
 
@@ -390,20 +407,21 @@ class GMM(Model):
 		t_sep = []
 
 		for demo in demos:
-			t_sep += [map(int, np.round(np.linspace(0, demo.shape[0], self.nb_states + 1)))]
+			t_sep += [
+				list(map(int, np.round(np.linspace(0, demo.shape[0], self.nb_states + 1))))]
 
 		# print t_sep
 		for i in range(self.nb_states):
 			data_tmp = np.empty((0, self.nb_dim))
 			inds = []
-			states_nb_data = 0   # number of datapoints assigned to state i
+			states_nb_data = 0  # number of datapoints assigned to state i
 
 			# Get bins indices for each demonstration
 			for n, demo in enumerate(demos):
-				inds = range(t_sep[n][i], t_sep[n][i+1])
+				inds = range(t_sep[n][i], t_sep[n][i + 1])
 
 				data_tmp = np.concatenate([data_tmp, demo[inds]], axis=0)
-				states_nb_data += t_sep[n][i+1]-t_sep[n][i]
+				states_nb_data += t_sep[n][i + 1] - t_sep[n][i]
 
 			self.priors[i] = states_nb_data
 			self.mu[i] = np.mean(data_tmp, axis=0)
@@ -418,7 +436,7 @@ class GMM(Model):
 					dGrid = np.ix_([i], d, d)
 					self.sigma[dGrid] = (np.cov(data_tmp[:, d].T) + np.eye(
 						len(d)) * reg)[:, :, np.newaxis]
-				# print self.Sigma[:,:,i]
+		# print self.Sigma[:,:,i]
 
 		# normalize priors
 		self.priors = self.priors / np.sum(self.priors)
@@ -435,6 +453,7 @@ class GMM(Model):
 		self.Trans[-1, -1] = 1.0
 		self.init_priors = np.ones(self.nb_states) * 1. / self.nb_states
 
+
 	def add_trash_component(self, data, scale=2.):
 		if isinstance(data, list):
 			data = np.concatenate(data, axis=0)
@@ -446,7 +465,6 @@ class GMM(Model):
 		self.priors /= np.sum(self.priors)
 		self.mu = np.concatenate([self.mu, mu_new[None]], axis=0)
 		self.sigma = np.concatenate([self.sigma, sigma_new[None]], axis=0)
-
 
 
 	def mvn_pdf(self, x, reg=None):
@@ -473,7 +491,7 @@ class GMM(Model):
 			dx = mu - x
 
 		eins_idx = ('baj,baj->ba', 'ajk,baj->bak') if x.ndim > 1 else (
-		'aj,aj->a', 'ajk,aj->ak')
+			'aj,aj->a', 'ajk,aj->ak')
 
 		return -0.5 * np.einsum(eins_idx[0], dx, np.einsum(eins_idx[1], lmbda_, dx)) \
 			   - mu.shape[1] / 2. * np.log(2 * np.pi) - np.sum(

@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import scipy as sp
 
 from scipy.stats import multivariate_normal
-
 from .functions import *
 from matplotlib.path import Path
 import matplotlib.patches as patches
@@ -344,7 +343,7 @@ def plot_mixture_linear_system(model, mode='glob', nb_sub=20, gmm=True, min_alph
 		# compute responsabilities
 		l = np.zeros((mesh_data.shape[1], model.nb_states))
 		for i in range(model.nb_states):
-			l[:, i] = pbd.multi_variate_normal(mesh_data.T, model.mus_in[i], model.sigmas_in[i])
+			l[:, i] = multi_variate_normal(mesh_data.T, model.mus_in[i], model.sigmas_in[i])
 
 		l += np.log(model.priors)[None]
 
@@ -382,7 +381,7 @@ def plot_mixture_linear_system(model, mode='glob', nb_sub=20, gmm=True, min_alph
 			else:
 				mu, sigma = (model.mus_in_p[:, 0], model.sigmas_in_p[:, 0])
 
-		pbd.plot_gmm(mu, sigma, swap=True, color=statecmap, ax=kwargs.pop('ax0', None), zorder=0)
+		plot_gmm(mu, sigma, swap=True, color=statecmap, ax=kwargs.pop('ax0', None), zorder=0)
 
 	if return_strm:
 		return statecmap, strm
@@ -443,7 +442,7 @@ def plot_gmm(Mu, Sigma, dim=None, color=[1, 0, 0], alpha=0.5, linewidth=1, marke
 
 	if not isinstance(color, list) and not isinstance(color, np.ndarray):
 		color = [color] * nbStates
-	elif not isinstance(color[0], basestring) and not isinstance(color, np.ndarray):
+	elif not isinstance(color[0], str) and not isinstance(color, np.ndarray):
 		color = [color] * nbStates
 
 	if not isinstance(alpha, np.ndarray):
