@@ -212,15 +212,15 @@ class LQR(object):
 
 			return Q, z
 		else:
-		if isinstance(self._gmm_xi, tuple):
-			gmm, seq = self._gmm_xi
-			return gmm.lmbda[seq[t]], gmm.mu[seq[t]]
-		elif isinstance(self._gmm_xi, pbd.GMM):
-			return self._gmm_xi.lmbda[t], self._gmm_xi.mu[t]
-		elif isinstance(self._gmm_xi, pbd.MVN):
-			return self._gmm_xi.lmbda, self._gmm_xi.mu
-		else:
-				raise ValueError("Not supported gmm_xi")
+			if isinstance(self._gmm_xi, tuple):
+				gmm, seq = self._gmm_xi
+				return gmm.lmbda[seq[t]], gmm.mu[seq[t]]
+			elif isinstance(self._gmm_xi, pbd.GMM):
+				return self._gmm_xi.lmbda[t], self._gmm_xi.mu[t]
+			elif isinstance(self._gmm_xi, pbd.MVN):
+				return self._gmm_xi.lmbda, self._gmm_xi.mu
+			else:
+					raise ValueError("Not supported gmm_xi")
 
 	def get_R(self, t):
 		if isinstance(self._gmm_u, pbd.MVN):
