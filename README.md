@@ -3,6 +3,9 @@
 If you came there reading one of the following works, please directly go to the related page.
 
 - [Bayesian Gaussian mixture model for robotic policy imitation](https://gitlab.idiap.ch/rli/pbdlib-python/blob/master/pop/readme.md)
+- [Variational  nference with
+Mixture Model Approximation
+for Applications in Robotics](https://gitlab.idiap.ch/rli/pbdlib-python/blob/master/pop/readme.md)
 
 
 # pbdlib
