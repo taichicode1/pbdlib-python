@@ -2,7 +2,7 @@
 
 ## Video
 
-[![IMAGE ALT TEXT](http://img.youtube.com/vi/90tp3vwOiDE/0.jpg)](https://www.youtube.com/watch?v=90tp3vwOiDE "Presentation Video")
+[![IMAGE ALT TEXT](http://img.youtube.com/vi/Cn1T9Y7AwiQ&/0.jpg)](https://www.youtube.com/watch?v=Cn1T9Y7AwiQ& "Presentation Video")
 
 ## to install
 Is compatible with python 2 and 3, tensorflow 1 and 2
