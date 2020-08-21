@@ -2,7 +2,7 @@ import numpy as np
 from .model import *
 from .functions import multi_variate_normal
 from scipy.linalg import block_diag
-
+from scipy.misc import logsumexp
 from termcolor import colored
 from .mvn import MVN
 
@@ -328,7 +328,6 @@ class GMM(Model):
 					self.init_params_scikit(data, 'full')
 
 		if only_scikit: return
-		data = data.T
 
 		LL = np.zeros(nb_max_steps)
 		for it in range(nb_max_steps):
@@ -338,7 +337,7 @@ class GMM(Model):
 			L_log = np.zeros((self.nb_states, nb_samples))
 
 			for i in range(self.nb_states):
-				L_log[i, :] = np.log(self.priors[i]) + multi_variate_normal(data.T, self.mu[i],
+				L_log[i, :] = np.log(self.priors[i]) + multi_variate_normal(data, self.mu[i],
 																			self.sigma[i],
 																			log=True)
 
@@ -347,12 +346,13 @@ class GMM(Model):
 			GAMMA2 = GAMMA / np.sum(GAMMA, axis=1)[:, np.newaxis]
 
 			# M-step
-			self.mu = np.einsum('ac,ic->ai', GAMMA2,
-								data)  # a states, c sample, i dim
+			# self.mu = np.einsum('ac,ci->ai', GAMMA2,
+			# 					data)  # a states, c sample, i dim
+			#
+			self.mu = np.dot(GAMMA2, data)
+			dx = data[None] - self.mu[:, None]  # states, samples, dim
 
-			dx = data[None, :] - self.mu[:, :, None]  # nb_dim, nb_states, nb_samples
-
-			self.sigma = np.einsum('acj,aic->aij', np.einsum('aic,ac->aci', dx, GAMMA2),
+			self.sigma = np.einsum('acj,aci->aij', np.einsum('aci,ac->aci', dx, GAMMA2),
 								   dx)  # a states, c sample, i-j dim
 
 			self.sigma += self.reg
@@ -373,9 +373,9 @@ class GMM(Model):
 			if it > nb_min_steps:
 				if LL[it] - LL[it - 1] < max_diff_ll:
 					if reg_finish is not False:
-						self.sigma = np.einsum(
-							'acj,aic->aij', np.einsum('aic,ac->aci', dx, GAMMA2),
-							dx) + reg_finish
+						self.sigma = np.einsum('acj,aci->aij',
+											   np.einsum('aci,ac->aci', dx, GAMMA2),
+											   dx) + reg_finish
 
 					if verbose:
 						print(
@@ -496,3 +496,6 @@ class GMM(Model):
 		return -0.5 * np.einsum(eins_idx[0], dx, np.einsum(eins_idx[1], lmbda_, dx)) \
 			   - mu.shape[1] / 2. * np.log(2 * np.pi) - np.sum(
 			np.log(sigma_chol_.diagonal(axis1=1, axis2=2)), axis=1)
+
+	def log_prob(self, x):
+		return logsumexp(self.mvn_pdf(x) + np.log(self.priors)[None], axis=1)

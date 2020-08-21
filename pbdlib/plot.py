@@ -77,7 +77,7 @@ def plot_distpatch(ax, x, mean, var, color=[1, 0, 0], num_std=2, alpha=0.5, line
 	ax.plot(x, mean, linewidth=linewidth, color=color, alpha=linealpha)  # Mean
 
 def plot_spherical_gmm(Mu, Sigma, dim=None, tp=None, color='r',
-						   alpha=255, swap=False):
+						   alpha=255, swap=False, ax=None, label=None):
 		"""
 
 		:param Mu:
@@ -168,9 +168,14 @@ def plot_spherical_gmm(Mu, Sigma, dim=None, tp=None, color='r',
 			else:
 				c = col
 
-			plt.plot(points_int[0, :], points_int[1, :], lw=1, alpha=1, color=col)
-			plt.plot(points_ext[0, :], points_ext[1, :], lw=1, alpha=1, color=col)
-			plt.plot(points[0, :], points[1, :], lw=1, alpha=1, color='k', ls='--')
+			if ax is None:
+				p, a = (plt, plt.axes())
+			else:
+				p, a = (ax, ax)
+			_label_std = None if label is None else label + ' std'
+			p.plot(points_int[0, :], points_int[1, :], lw=1, alpha=1, color=col, ls='--')
+			p.plot(points_ext[0, :], points_ext[1, :], lw=1, alpha=1, color=col, ls='--')
+			p.plot(points[0, :], points[1, :], lw=1, alpha=1, color=col, label=label)
 
 			# plt.fill_between(points_ext[0], points_int[1], points_ext[1])
 

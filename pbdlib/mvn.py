@@ -275,6 +275,19 @@ class MVN(object):
 
 		return prod
 
+
+	def alpha_divergence(self, other, alpha=0.5):
+		"https://mast.queensu.ca/~communications/Papers/gil-msc11.pdf"
+		lmbda = np.linalg.inv(alpha * other.sigma + (1. - alpha) * self.sigma)
+
+		r = 0.5 * (self.mu  - other.mu).T.dot(lmbda).dot(self.mu  - other.mu) -\
+			1./(2 * alpha * (alpha - 1.)) * (
+					-np.linalg.slogdet(lmbda)[1]\
+					- (1.-alpha) * np.linalg.slogdet(self.sigma)[1]\
+					- alpha * np.linalg.slogdet(other.sigma)[1])
+
+		return r
+
 	def sample(self, size=None):
 		return np.random.multivariate_normal(self.mu, self.sigma, size=size)
 

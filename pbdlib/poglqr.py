@@ -157,7 +157,7 @@ class LQR(object):
 	@gmm_u.setter
 	def gmm_u(self, value):
 		"""
-		:param value 		[float] or [pbd.MVN] or [pbd.GMM] or [(pbd.GMM, list)]
+		:param value 		[float (std of u)] or [pbd.MVN] or [pbd.GMM] or [(pbd.GMM, list)]
 		"""
 		# resetting solution
 		self._mvn_sol_xi = None
@@ -167,7 +167,7 @@ class LQR(object):
 
 		if isinstance(value, float):
 			self._gmm_u = pbd.MVN(
-				mu=np.zeros(self.u_dim), lmbda=10 ** value * np.eye(self.u_dim))
+				mu=np.zeros(self.u_dim), lmbda=value ** -2 * np.eye(self.u_dim))
 		else:
 			self._gmm_u = value
 
