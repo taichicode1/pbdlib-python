@@ -3,6 +3,7 @@ from .utils.gaussian_utils import gaussian_moment_matching
 from .plot import plot_gmm
 
 
+
 class Model(object):
 	"""
 	Basis class for Gaussian mixture model (GMM), Hidden Markov Model (HMM), Hidden semi-Markov
@@ -314,6 +315,10 @@ class Model(object):
 		mu_est, sigma_est = (np.asarray(mu_est), np.asarray(sigma_est))
 
 		if return_gmm:
+			if sample_size == 1:
+				from .gmm import GMM
+				return GMM(priors=h[:, 0], mu=mu_est[:, 0], sigma=sigma_est,
+						   nb_dim=mu_est.shape[-1], nb_states=mu_est.shape[0])
 			return h, mu_est, sigma_est
 		# return np.mean(mu_est, axis=0)
 		else:
