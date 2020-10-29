@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-
+from scipy.special import logsumexp
 def vec(x):
 	"""
 
@@ -13,7 +13,7 @@ def vec(x):
 
 
 def log_normalize(x, axis=0):
-	return x - tf.reduce_logsumexp(x, axis=axis)
+	return x - logsumexp(x, axis=axis)
 
 
 def matmatmul(a=None, b=None, transpose_a=False, transpose_b=False):

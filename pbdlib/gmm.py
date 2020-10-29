@@ -2,13 +2,13 @@ import numpy as np
 from .model import *
 from .functions import multi_variate_normal
 from scipy.linalg import block_diag
-
+from scipy.special import logsumexp
 from termcolor import colored
 from .mvn import MVN
 
 
 class GMM(Model):
-    def __init__(self, nb_states=1, nb_dim=None, init_zeros=False, mu=None, lmbda=None, sigma=None, priors=None):
+    def __init__(self, nb_states=1, nb_dim=None, init_zeros=False, mu=None, lmbda=None, sigma=None, priors=None, log_priors=None):
         if mu is not None:
             nb_states = mu.shape[0]
             nb_dim = mu.shape[-1]
@@ -22,6 +22,9 @@ class GMM(Model):
         self._lmbda = lmbda
         self._sigma = sigma
         self._priors = priors
+        self._log_priors = log_priors
+
+
 
         if init_zeros:
             self.init_zeros()
@@ -41,7 +44,7 @@ class GMM(Model):
         # print priors, self.priors
 
         mus, sigmas = self.moment_matching(priors)
-        mvn = MVN(nb_dim=self.nb_dim, mu=mus[0], sigma=sigmas[0])
+        mvn = MVN(nb_dim=self.nb_dim, mu=mus, sigma=sigmas)
 
         return mvn
 
@@ -55,10 +58,16 @@ class GMM(Model):
         if h.ndim == 1:
             h = h[None]
 
-        mus = np.einsum('ak,ki->ai', h, self.mu)
-        dmus = self.mu[None] - mus[:, None]  # nb_timesteps, nb_states, nb_dim
-        sigmas = np.einsum('ak,kij->aij', h, self.sigma) + \
-                 np.einsum('ak,akij->aij', h, np.einsum('aki,akj->akij', dmus, dmus))
+        if self.mu.ndim == 2:
+            mus = np.einsum('ak,ki->ai', h, self.mu)
+            dmus = self.mu[None] - mus[:, None]  # nb_timesteps, nb_states, nb_dim
+            sigmas = np.einsum('ak,kij->aij', h, self.sigma) + \
+                     np.einsum('ak,akij->aij', h, np.einsum('aki,akj->akij', dmus, dmus))
+        else:
+            mus = np.einsum('ak,aki->ai', h, self.mu)
+            dmus = self.mu- mus[:, None]  # nb_timesteps, nb_states, nb_dim
+            sigmas = np.einsum('ak,akij->aij', h, self.sigma) + \
+                     np.einsum('ak,akij->aij', h, np.einsum('aki,akj->akij', dmus, dmus))
 
         return mus, sigmas
 
@@ -104,6 +113,7 @@ class GMM(Model):
             gmm.priors /= np.sum(gmm.priors)
 
         else:
+            # component wise
             gmm = GMM(nb_dim=self.nb_dim, nb_states=self.nb_states)
             gmm.priors = self.priors
             gmm.mu = np.einsum('aij,aj->ai', self.lmbda, self.mu) + \
@@ -291,6 +301,8 @@ class GMM(Model):
             Composed of 0 and 1. Mask given the dependencies in the covariance matrices
         :return:
         """
+        if self.nb_dim is None:
+            self.nb_dim = data.shape[-1]
 
         self.reg = reg
 
@@ -457,18 +469,28 @@ class GMM(Model):
         :return: 			np.array([nb_states, nb_samples])
             log mvn
         """
-        # if len(x.shape) > 1:  # TODO implement mvn for multiple xs
-        # 	raise NotImplementedError
+
         mu, lmbda_, sigma_chol_ = self.mu, self.lmbda, self.sigma_chol
 
-        if x.ndim > 1:
+        if x.ndim > 1 and mu.ndim == 2:
             dx = mu[None] - x[:, None]  # nb_timesteps, nb_states, nb_dim
+            eins_idx = ('baj,baj->ba', 'ajk,baj->bak')
+        elif x.ndim > 1 and mu.ndim == 3:
+            dx = mu - x[:, None] # nb_timesteps, nb_states, nb_dim
+            eins_idx = ('baj,baj->ba', 'bajk,baj->bak')
         else:
             dx = mu - x
+            eins_idx =('aj,aj->a', 'ajk,aj->ak')
 
-        eins_idx = ('baj,baj->ba', 'ajk,baj->bak') if x.ndim > 1 else (
-            'aj,aj->a', 'ajk,aj->ak')
+        if lmbda_.ndim == 4:
+            cov_part = np.sum( np.log(sigma_chol_.diagonal(axis1=2, axis2=3)), axis=-1)
+
+        else:
+            cov_part = np.sum(np.log(sigma_chol_.diagonal(axis1=1, axis2=2)), axis=1)
 
         return -0.5 * np.einsum(eins_idx[0], dx, np.einsum(eins_idx[1], lmbda_, dx)) \
-               - mu.shape[1] / 2. * np.log(2 * np.pi) - np.sum(
-            np.log(sigma_chol_.diagonal(axis1=1, axis2=2)), axis=1)
+               - (mu.shape[-1] / 2.) * np.log(2 * np.pi)  - cov_part
+
+    def log_prob(self, x):
+
+        return logsumexp(self.log_priors + self.mvn_pdf(x), -1)

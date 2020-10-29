@@ -79,6 +79,7 @@ class Model(object):
 		elif isinstance(value, np.ndarray):
 			self._reg = value
 		elif isinstance(value, float):
+			print(value)
 			self._reg = value ** 2 * np.eye(self.nb_dim)
 		else:
 			raise ValueError('Regularization should be of type float, ndarray or list')
@@ -95,6 +96,17 @@ class Model(object):
 	@priors.setter
 	def priors(self, value):
 		self._priors = value
+
+	@property
+	def log_priors(self):
+		if self._log_priors is None:
+			self._log_priors = np.log(self._priors + 1e-40)
+
+		return self._log_priors
+
+	@log_priors.setter
+	def log_priors(self, value):
+		self._log_priors = value
 
 	@property
 	def mu(self):

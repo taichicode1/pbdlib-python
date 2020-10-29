@@ -1,4 +1,4 @@
-import numpy as np
+import numpy
 from .gmm import GMM, MVN
 from .hmm import HMM
 from scipy.special import logsumexp
@@ -6,6 +6,7 @@ from sklearn import mixture
 from scipy.stats import wishart
 from .model import *
 from .utils import gaussian_moment_matching
+from .utils.math_utils import log_normalize
 
 
 class MTMM(Model):
@@ -151,7 +152,7 @@ class MTMM(Model):
 				   axis=2)  # [nb_states, nb_samples]
 
 		log_norm = self.log_normalization[:, None]
-		return log_norm + (-(self.nu + self.nb_dim) / 2)[:, None] * np.log(1 + s / self.nu[:, None])
+		return log_norm + (-(self.nu + self.nb_dim) / 2)[:, None] * numpy.log(1 + s / self.nu[:, None])
 
 	def obs_likelihood(self, demo=None, dep=None, marginal=None, *args, **kwargs):
 		B = self.log_prob_components(demo)
@@ -184,7 +185,6 @@ class MTMM(Model):
 				Overrides marginal probability of states given input dimensions
 		:return:
 		"""
-
 		if data_in.ndim == 1:
 			data_in = data_in[None]
 			was_not_batch = True
@@ -192,7 +192,6 @@ class MTMM(Model):
 			was_not_batch = False
 
 		sample_size = data_in.shape[0]
-
 		if tmp and hasattr(self, '_tmp_slices') and not self._tmp_slices == (dim_in, dim_out):
 			del self._tmp_inv_sigma_out_in, self._tmp_inv_sigma_in_in, self._tmp_slices, self._tmp_marginal_model
 
@@ -208,7 +207,11 @@ class MTMM(Model):
 
 		if h is None:
 			h = marginal_model.log_prob_components(data_in)
+			# self._resp = h
 			h += np.log(self.priors)[:, None]
+			self._resp = h
+			# h = log_normalize(h, axis=0)
+			# h = np.exp(h).T
 			h = np.exp(h).T
 			h /= np.sum(h, axis=1, keepdims=True)
 
@@ -271,6 +274,8 @@ class MTMM(Model):
 
 		nu = self.nu + mu_in.shape[1]
 		# the conditional distribution is now a still a mixture
+		# normalize h:
+
 		if was_not_batch:
 			mu_est = mu_est[:, 0]
 			sigma_est = sigma_est[:, 0]
@@ -289,18 +294,21 @@ class MTMM(Model):
 			gmm = GMM(nb_states=self.nb_states)
 			gmm.mu = mu_est
 			gmm.priors = h
-			gmm.sigma = sigma_est * (nu / (nu - 2.))[:, None, None, None]
+			gmm.sigma = sigma_est * (nu / (nu - 2.))[:,None, None, None]
 			return gmm
 
 		elif return_linear:
 			As = inv_sigma_out_in
 			bs = mu_out - np.matmul(inv_sigma_out_in, mu_in[:, :, None])[:, :, 0]
-			A = np.einsum('ak,kij->aij', h, As)
-			b = np.einsum('ak,ki->ai', h, bs)
+
 			if was_not_batch:
-				return A[0], b[0], \
-					   gaussian_moment_matching(mu_est, sigma_est * (nu / (nu - 2.))[:, None, None, None], h)[1][0]
+				A = np.einsum('k,kij->ij', h, As)
+				b = np.einsum('k,ki->i', h, bs)
+				return A, b, \
+					   gaussian_moment_matching(mu_est, sigma_est * (nu / (nu - 2.))[:, None, None], h)[1]
 			else:
+				A = np.einsum('ak,kij->aij', h, As)
+				b = np.einsum('ak,ki->ai', h, bs)
 				return A, b, gaussian_moment_matching(mu_est, sigma_est * (nu / (nu - 2.))[:, None, None, None], h)[1]
 
 		elif moment_matching:
@@ -483,6 +491,11 @@ class MTMM(Model):
 				size=num_comp_in_X)
 		return X
 
+	def truncate(self):
+		keep = self.priors > 1E-6
+		return MTMM(mu=self.mu[keep, :], lmbda=self.lmbda[keep, :],
+					sigma=self.sigma[keep, :], nu=self.nu[keep], priors=self.priors[keep])
+
 
 class VBayesianGMM(MTMM):
 	def __init__(self, sk_parameters, *args, **kwargs):
@@ -562,8 +575,14 @@ class VBayesianGMM(MTMM):
 
 		self.nu_prior = m.degrees_of_freedom_prior_
 		# print(m.degrees_of_freedom_prior_)
+		if m.covariances_.ndim == 2:
+			covs = np.zeros((self.mu.shape[0], self.nb_dim, self.nb_dim))
+			for j in range(self.mu.shape[0]):
+				covs[j] = np.diag(m.covariances_[j])
+			w_k = np.linalg.inv(covs* m.degrees_of_freedom_[:, None, None])
 
-		w_k = np.linalg.inv(m.covariances_ * m.degrees_of_freedom_[:, None, None])
+		else:
+			w_k = np.linalg.inv(m.covariances_ * m.degrees_of_freedom_[:, None, None])
 		l_k = ((m.degrees_of_freedom_[:, None, None] + 1 - self.nb_dim) * m.mean_precision_[:, None, None]) / \
 			  (1. + m.mean_precision_[:, None, None]) * w_k
 

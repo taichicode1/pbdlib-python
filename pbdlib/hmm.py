@@ -201,7 +201,6 @@ class HMM(GMM):
             sample_size = demo.shape[0]
         elif isinstance(demo, dict):
             sample_size = demo['x'].shape[0]
-
         B, _ = self.obs_likelihood(demo, dep, marginal, sample_size)
         # if table is not None:
         # 	B *= table[:, [n]]
@@ -256,11 +255,14 @@ class HMM(GMM):
         """
         mu = np.mean(data, axis=0)
         sigma = np.cov(data.T)
+        if sigma.ndim == 0:
+            sigma = np.ones((1,1))*sigma
+
 
         if left_to_right:
             self.mu = np.array([mu for i in range(self.nb_states)])
         else:
-            self.mu = np.array([np.random.multivariate_normal(mu, sigma)
+            self.mu = np.array([np.random.multivariate_normal(mu*1, sigma)
                  for i in range(self.nb_states)])
 
         self.sigma = np.array([sigma + self.reg for i in range(self.nb_states)])

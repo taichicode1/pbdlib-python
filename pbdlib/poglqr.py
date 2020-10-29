@@ -1,6 +1,7 @@
 import numpy as np
 from .utils.utils import lifted_transfer_matrix
 import pbdlib as pbd
+from . import MVN
 
 
 class LQR(object):
@@ -24,6 +25,14 @@ class LQR(object):
             None, None, None, None, None, None, None
 
         self._Q, self._z = None, None
+
+    @property
+    def seq_xi(self):
+        return self._seq_xi
+
+    @seq_xi.setter
+    def seq_xi(self, value):
+        self._seq_xi  =value
 
     @property
     def K(self):
@@ -97,7 +106,7 @@ class LQR(object):
 
     @horizon.setter
     def horizon(self, value):
-        self.reset_params()
+        # self.reset_params()
 
         self._horizon = value
 
@@ -161,7 +170,7 @@ class LQR(object):
         self._mvn_sol_xi = None
         self._mvn_sol_u = None
         self._seq_u = None
-        self._seq_xi = None
+        # self._seq_xi = None
 
         if isinstance(value, float):
             self._gmm_u = pbd.MVN(
@@ -198,15 +207,22 @@ class LQR(object):
                 if self._z.ndim == 1:
                     z = self._z
                 elif self._z.ndim == 2:
-                    z = self._z[t]
+                    if self._seq_xi is None:
+                        z = self._z[t]
+                    else:
+                        z = self._z[self._seq_xi[t]]
 
             if isinstance(self._Q, tuple):
                 Q = self._Q[0][self._Q[1][t]]
             elif isinstance(self._Q, np.ndarray):
+
                 if self._Q.ndim == 2:
                     Q = self._Q
-                elif self._z.ndim == 3:
-                    Q = self._Q[t]
+                elif self._Q.ndim == 3:
+                    if self._seq_xi is None:
+                        Q = self._Q[t]
+                    else:
+                        Q = self._Q[self._seq_xi[t]]
 
             return Q, z
         else:
@@ -231,6 +247,18 @@ class LQR(object):
         else:
             raise ValueError("Not supported gmm_u")
 
+    def get_A(self, t):
+        if self.A.ndim == 2:
+            return self.A
+        else:
+            return self.A[t]
+
+    def get_B(self, t):
+        if self.B.ndim == 2:
+            return self.B
+        else:
+            return self.B[t]
+
     def ricatti(self):
         """
         http://web.mst.edu/~bohner/papers/tlqtots.pdf
@@ -244,10 +272,6 @@ class LQR(object):
         _K = [None for i in range(self._horizon - 1)]
         _Kv = [None for i in range(self._horizon - 1)]
         _Qc = [None for i in range(self._horizon - 1)]
-        # _S = np.empty((self._horizon, self.xi_dim, self.xi_dim))
-        # _v = np.empty((self._horizon, self.xi_dim))
-        # _K = np.empty((self._horizon-1, self.u_dim, self.xi_dim))
-        # _Kv = np.empty((self._horizon-1, self.u_dim, self.xi_dim))
 
         _S[-1] = Q
         _v[-1] = Q.dot(z)
@@ -255,14 +279,16 @@ class LQR(object):
         for t in range(self.horizon - 2, -1, -1):
             Q, z = self.get_Q_z(t)
             R = self.get_R(t)
+            A = self.get_A(t)
+            B = self.get_B(t)
 
-            _Qc[t] = np.linalg.inv(R + self.B.T.dot(_S[t + 1]).dot(self.B))
-            _Kv[t] = _Qc[t].dot(self.B.T)
-            _K[t] = _Kv[t].dot(_S[t + 1]).dot(self.A)
+            _Qc[t] = np.linalg.inv(R + B.T.dot(_S[t + 1]).dot(B))
+            _Kv[t] = _Qc[t].dot(B.T)
+            _K[t] = _Kv[t].dot(_S[t + 1]).dot(A)
 
-            AmBK = self.A - self.B.dot(_K[t])
+            AmBK = A - B.dot(_K[t])
 
-            _S[t] = self.A.T.dot(_S[t + 1]).dot(AmBK) + Q
+            _S[t] = A.T.dot(_S[t + 1]).dot(AmBK) + Q
             _v[t] = AmBK.T.dot(_v[t + 1]) + Q.dot(z)
 
         self._S = _S
@@ -290,6 +316,52 @@ class LQR(object):
 
         return np.array(cs)
 
+    def get_command(self, xi, i):
+        if xi.ndim == 1:
+            return -self._K[i].dot(xi) + self._Kv[i].dot(self._v[i])
+        else:
+            return np.einsum('ij,aj->ai', -self.K[i], xi) + self._Kv[i].dot(self._v[i + 1])
+
+    def policy(self, xi, t):
+        """
+        Time-dependent and linear in state policy as MVN distribution.
+        :param xi: Current state
+        :return:
+        """
+        loc = self.get_command(xi, t)
+        Qc = self.Qc[t]
+        try:
+            np.linalg.cholesky(Qc)
+            invertible = True
+        except:
+            invertible = False
+        phi = 1e-8
+        while not invertible:
+            Qc = Qc + np.eye(self.u_dim)*phi
+            try:
+                np.linalg.cholesky(Qc)
+                invertible = True
+            except:
+                invertible = False
+                phi *= 1E1
+
+        cov = np.tile(Qc[None], (loc.shape[0],1,1))
+
+        return MVN(mu = loc, sigma = cov)
+
+    def get_sample(self, xi, i, sample_size=1):
+        """
+
+        :param xi:
+        :param i:
+        :param sample_size:
+        :return:
+        """
+        return self.policy(xi, i).sample(sample_size)
+
+    def trajectory_distribution(self, xi, u, t):
+        pass
+
     def get_seq(self, xi0, return_target=False):
         xis = [xi0]
         us = [-self._K[0].dot(xi0) + self._Kv[0].dot(self._v[0])]
@@ -297,10 +369,12 @@ class LQR(object):
         ds = []
 
         for t in range(1, self.horizon-1):
-            xis += [self.A.dot(xis[-1]) + self.B.dot(us[-1])]
+            A = self.get_A(t)
+            B = self.get_B(t)
+            xis += [A.dot(xis[-1]) + B.dot(us[-1])]
 
             if return_target:
-                d = np.linalg.inv(self._S[t].dot(self.A)).dot(self._v[t])
+                d = np.linalg.inv(self._S[t].dot(A)).dot(self._v[t+1])
                 ds += [d]
 
                 us += [self._K[t].dot(d - xis[-1])]
@@ -311,6 +385,68 @@ class LQR(object):
             return np.array(xis), np.array(us), np.array(ds)
         else:
             return np.array(xis), np.array(us)
+
+    def make_rollout_samples(self, x0):
+        T = self.horizon
+
+        xs = [None for i in range(T)]
+        us = [None for i in range(T-1)]
+
+        xs[0] = x0
+        next_xs = x0
+        n = x0.shape[0]
+
+        for i in range(T-1):
+            B = self.get_B(i)
+            A = self.get_A(i)
+            loc = self.get_command(next_xs, i)
+            cov = self.Qc[i]
+            eps = np.random.normal(size=(n,self.u_dim))
+            next_us = loc + np.einsum('ij,aj->ai ', np.linalg.cholesky(cov),eps)
+            next_xs = np.einsum('ij,aj->ai', A, next_xs) + np.einsum('ij,aj->ai', B, next_us)
+            xs[i+1] = next_xs
+            us[i] = next_us
+        return np.transpose(np.stack(xs), (1, 0, 2)), np.transpose(np.stack(us), (1, 0, 2))
+
+    def make_rollout(self, x0):
+        T = self.horizon
+
+        xs = [None for i in range(T)]
+        us = [None for i in range(T-1)]
+
+        xs[0] = x0
+
+        for i in range(T-1):
+            B = self.get_B(i)
+            A = self.get_A(i)
+
+            next_us = self.get_command(xs[i], i)
+            next_xs = np.einsum('ij,aj->ai', A, xs[i]) + np.einsum('ij,aj->ai', B, next_us)
+            xs[i+1] = next_xs
+            us[i] = next_us
+        return np.transpose(np.stack(xs), (1, 0, 2)), np.transpose(np.stack(us), (1, 0, 2))
+
+    def rollout_policy(self, dist_policy, x0):
+        """
+        Rollout of the stochastic policy.
+        :param dist_policy: A policy distribution which takes x and t as input.
+        :param x0: initial state
+        :return:
+        """
+        T = self.horizon
+
+        xs = [None for i in range(T)]
+        us = [None for i in range(T - 1)]
+        xs[0] = x0
+        for i in range(T - 1):
+            B = self.get_B(i)
+            A = self.get_A(i)
+            next_us = dist_policy(xs[i], i).sample()
+            next_xs = np.einsum('ij,aj->ai', A, xs[i]) + np.einsum('ij,aj->ai', B, next_us)
+            xs[i + 1] = next_xs
+            us[i] = next_us
+        return np.transpose(np.stack(xs), (1, 0, 2)), np.transpose(np.stack(us), (1, 0, 2))
+
 
 
 class GMMLQR(LQR):
